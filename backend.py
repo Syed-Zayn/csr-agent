@@ -1,4 +1,5 @@
 import os
+import time  # New Import for waiting
 from typing import Annotated, Sequence, TypedDict
 from dotenv import load_dotenv
 
@@ -15,28 +16,31 @@ load_dotenv()
 
 # --- 1. Setup Models ---
 
-# BRAIN: Google Gemini 2.5 Flash
+# BRAIN: Google Gemini 1.5 Flash
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash", 
-    temperature=0, # Strict factual mode
+    temperature=0, 
     streaming=True
 )
 
-# SEARCH TOOL: Gemini Embeddings (Must match ingest.py)
+# SEARCH TOOL: Gemini Embeddings
 embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
 # Connect to Pinecone
 vector_store = PineconeVectorStore(
-    index_name="csr-agent-gemini", # Ensure same name as ingest.py
+    index_name="csr-agent-gemini",
     embedding=embeddings
 )
 
 # K=10 for Deep Search
-retriever = vector_store.as_retriever(search_kwargs={"k": 40})
+retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 
 # --- 2. Setup Neon DB (Memory) ---
 connection_string = os.getenv("NEON_DB_URL")
-db_url = connection_string.replace("+asyncpg", "").replace("+psycopg", "")
+if connection_string:
+    db_url = connection_string.replace("+asyncpg", "").replace("+psycopg", "")
+else:
+    db_url = "" # Handle generic case if needed
 
 # --- 3. LangGraph State ---
 class AgentState(TypedDict):
@@ -52,17 +56,20 @@ def retrieve_node(state: AgentState):
     latest_message = state["messages"][-1].content
     print(f"🔍 Searching Pinecone for: {latest_message}")
     
-    docs = retriever.invoke(latest_message)
-    context_text = "\n\n".join([doc.page_content for doc in docs])
+    try:
+        docs = retriever.invoke(latest_message)
+        context_text = "\n\n".join([doc.page_content for doc in docs])
+    except Exception as e:
+        print(f"⚠️ Retrieval Error: {e}")
+        context_text = "No context available due to error."
     
     return {"context": context_text}
 
 def generate_node(state: AgentState):
     """
-    Answer Step: Uses Gemini LLM to write the answer based on Context.
+    Answer Step: Uses Gemini LLM with AUTO-RETRY for 429 Errors.
     """
     
-    # SYSTEM PROMPT (Optimized for your client's needs)
     system_prompt = (
         "You are an expert Corporate Social Responsibility (CSR) Consultant. "
         "Your role is to advise clients strictly based on the provided case studies and articles. "
@@ -84,9 +91,28 @@ def generate_node(state: AgentState):
     
     chain = prompt | llm
     
-    response = chain.invoke({"context": state["context"], "messages": state["messages"]})
+    # --- RETRY LOGIC START ---
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Try to generate response
+            response = chain.invoke({"context": state["context"], "messages": state["messages"]})
+            return {"messages": [response]}
+            
+        except Exception as e:
+            error_msg = str(e)
+            # Check for Rate Limit (429) or Resource Exhausted
+            if "429" in error_msg or "ResourceExhausted" in error_msg:
+                wait_time = 12 * (attempt + 1) # Wait 12s, then 24s...
+                print(f"⚠️ Google API Limit Hit (429). Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+            else:
+                # Agar koi aur error hai to crash hone do
+                raise e
     
-    return {"messages": [response]}
+    # Agar 3 baar try karne ke baad bhi na chale
+    return {"messages": [AIMessage(content="⚠️ System is currently busy (Google API Rate Limit). Please try again in a minute.")]}
+    # --- RETRY LOGIC END ---
 
 # --- 5. Graph Build ---
 def build_graph():
@@ -99,10 +125,12 @@ def build_graph():
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
     
-    conn = Connection.connect(db_url)
-    checkpointer = PostgresSaver(conn)
-    checkpointer.setup()
-    
-    return workflow.compile(checkpointer=checkpointer)
+    if db_url:
+        conn = Connection.connect(db_url)
+        checkpointer = PostgresSaver(conn)
+        checkpointer.setup()
+        return workflow.compile(checkpointer=checkpointer)
+    else:
+        return workflow.compile()
 
 graph = build_graph()
