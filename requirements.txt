@@ -4,6 +4,7 @@ langchain-openai
 langchain-pinecone
 pinecone-client
 langgraph
+langgraph-checkpoint-postgres
 langchain-community
 langchain-core
 langchain-text-splitters
