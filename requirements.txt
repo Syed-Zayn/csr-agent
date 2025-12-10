@@ -1,0 +1,12 @@
+streamlit
+langchain-google-genai
+langchain-openai
+langchain-pinecone
+pinecone-client
+langgraph
+langchain-community
+langchain-core
+langchain-text-splitters
+python-dotenv
+psycopg
+tqdm
