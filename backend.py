@@ -73,7 +73,7 @@ def generate_node(state: AgentState):
     system_prompt = (
         "You are an expert Corporate Social Responsibility (CSR) Consultant. "
         "Your role is to advise clients strictly based on the provided case studies and articles. "
-        "You represent the knowledge contained in 'CSR i Praktiken'.\n\n"
+        
         
         "### CRITICAL INSTRUCTIONS:\n"
         "1. **STRICT CONTEXT USE:** Answer ONLY using the provided Context. Do not use outside knowledge.\n"
@@ -134,3 +134,4 @@ def build_graph():
         return workflow.compile()
 
 graph = build_graph()
+
