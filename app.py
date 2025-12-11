@@ -134,7 +134,7 @@ st.markdown("""
 <div style='text-align: center; margin-bottom: 40px;'>
     <h1>🌿 Corporate Social Responsibility Expert</h1>
     <p style='color: #666; font-size: 1.1em;'>
-        Ask me about <b>Green Consultants, IKEA, Starbucks</b>, and more from 'CSR i Praktiken'.
+        Ask me about <b>Green Consultants, IKEA, Starbucks</b>, and more from our knowledge base on <b>Sustainability in Practice</b>.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -185,4 +185,5 @@ if user_input := st.chat_input("Type your question here..."):
             current_messages.append(AIMessage(content=full_response))
             
         except Exception as e:
+
             st.error(f"⚠️ Error: {e}")
