@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Eco-CSR Consultant",
     page_icon="🌿",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # --- 2. Custom CSS (Modern & Clean) ---
@@ -187,3 +187,4 @@ if user_input := st.chat_input("Type your question here..."):
         except Exception as e:
 
             st.error(f"⚠️ Error: {e}")
+
