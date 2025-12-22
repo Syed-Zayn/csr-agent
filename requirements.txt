@@ -11,3 +11,5 @@ langchain-text-splitters
 python-dotenv
 psycopg[binary]
 tqdm
+psycopg-pool
+
