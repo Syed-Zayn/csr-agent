@@ -11,7 +11,7 @@ from langchain_pinecone import PineconeVectorStore
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
-
+from psycopg_pool import ConnectionPool
 load_dotenv()
 
 # --- 1. Setup Models ---
@@ -33,7 +33,7 @@ vector_store = PineconeVectorStore(
 )
 
 # K=10 for Deep Search
-retriever = vector_store.as_retriever(search_kwargs={"k": 20})
+retriever = vector_store.as_retriever(search_kwargs={"k": 10})
 
 # --- 2. Setup Neon DB (Memory) ---
 connection_string = os.getenv("NEON_DB_URL")
@@ -73,7 +73,7 @@ def generate_node(state: AgentState):
     system_prompt = (
         "You are an expert Corporate Social Responsibility (CSR) Consultant. "
         "Your role is to advise clients strictly based on the provided case studies and articles. "
-        
+        "You represent the knowledge contained in 'CSR i Praktiken'.\n\n"
         
         "### CRITICAL INSTRUCTIONS:\n"
         "1. **STRICT CONTEXT USE:** Answer ONLY using the provided Context. Do not use outside knowledge.\n"
@@ -126,12 +126,11 @@ def build_graph():
     workflow.add_edge("generate", END)
     
     if db_url:
-        conn = Connection.connect(db_url)
-        checkpointer = PostgresSaver(conn)
+        pool = ConnectionPool(conninfo=db_url, max_size=20)
+        checkpointer = PostgresSaver(pool)
         checkpointer.setup()
         return workflow.compile(checkpointer=checkpointer)
     else:
         return workflow.compile()
 
 graph = build_graph()
-
