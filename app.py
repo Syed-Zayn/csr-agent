@@ -99,7 +99,7 @@ with st.sidebar:
     # Logo Area
     st.markdown("<div style='text-align: center; margin-bottom: 20px;'>", unsafe_allow_html=True)
     # Using a professional Icon URL
-    st.image("https://ibb.co/B5pZxnjy", width=80)
+    st.image("https://i.ibb.co/1tgq5zKr/grey.webp", width=80)
     st.markdown("<h2 style='color: #1b5e20;'>Mongreeney</h2></div>", unsafe_allow_html=True)
     
     # New Chat Button
@@ -187,5 +187,6 @@ if user_input := st.chat_input("Type your question here..."):
         except Exception as e:
 
             st.error(f"⚠️ Error: {e}")
+
 
 
