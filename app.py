@@ -99,8 +99,8 @@ with st.sidebar:
     # Logo Area
     st.markdown("<div style='text-align: center; margin-bottom: 20px;'>", unsafe_allow_html=True)
     # Using a professional Icon URL
-    st.image("https://cdn-icons-png.flaticon.com/512/2913/2913465.png", width=80)
-    st.markdown("<h2 style='color: #1b5e20;'>CSR Agent</h2></div>", unsafe_allow_html=True)
+    st.image("https://ibb.co/B5pZxnjy", width=80)
+    st.markdown("<h2 style='color: #1b5e20;'>Mongreeney</h2></div>", unsafe_allow_html=True)
     
     # New Chat Button
     if st.button("➕ New Chat", type="primary", use_container_width=True):
@@ -132,9 +132,9 @@ with st.sidebar:
 # Header
 st.markdown("""
 <div style='text-align: center; margin-bottom: 40px;'>
-    <h1>🌿 Corporate Social Responsibility Expert</h1>
+    <h1>How do companies make money with sustainability?</h1>
     <p style='color: #666; font-size: 1.1em;'>
-        Ask me about <b>Green Consultants, IKEA, Starbucks</b>, and more from our knowledge base on <b>Sustainability in Practice</b>.
+        Ask questions and explore <b>real-world examples</b>, of how companies use sustainability to generate <b>profit, reduce costs, and grow</b>.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -187,4 +187,5 @@ if user_input := st.chat_input("Type your question here..."):
         except Exception as e:
 
             st.error(f"⚠️ Error: {e}")
+
 
