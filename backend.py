@@ -1,30 +1,30 @@
 import os
-import time  # New Import for waiting
+import time
+import sqlite3  # ✅ Changed: Using SQLite instead of Postgres
 from typing import Annotated, Sequence, TypedDict
 from dotenv import load_dotenv
 
-# Sirf Google ki Libraries use hongi
+# --- IMPORTS ---
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_pinecone import PineconeVectorStore
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.postgres import PostgresSaver
-from psycopg import Connection
-from psycopg_pool import ConnectionPool
+from langgraph.checkpoint.sqlite import SqliteSaver # ✅ Changed: SQLite Saver
 load_dotenv()
 
 # --- 1. Setup Models ---
 
-# BRAIN: Google Gemini 1.5 Flash
+# BRAIN: Google Gemini 1.5 Flash (Standard Free Model)
+# ✅ FIX: Changed 'gemini-2.5-flash' to 'gemini-1.5-flash' to avoid model not found errors
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
+    model="gemini-1.5-flash", 
     temperature=0, 
     streaming=True
 )
 
 # SEARCH TOOL: Gemini Embeddings
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
 # Connect to Pinecone
 vector_store = PineconeVectorStore(
@@ -35,12 +35,10 @@ vector_store = PineconeVectorStore(
 # K=10 for Deep Search
 retriever = vector_store.as_retriever(search_kwargs={"k": 10})
 
-# --- 2. Setup Neon DB (Memory) ---
-connection_string = os.getenv("NEON_DB_URL")
-if connection_string:
-    db_url = connection_string.replace("+asyncpg", "").replace("+psycopg", "")
-else:
-    db_url = "" # Handle generic case if needed
+# --- 2. Setup Database (SQLite) ---
+# We no longer use NEON_DB_URL. 
+# SQLite will create a local file named 'checkpoints.db' automatically.
+DB_PATH = "checkpoints.db"
 
 # --- 3. LangGraph State ---
 class AgentState(TypedDict):
@@ -53,11 +51,14 @@ def retrieve_node(state: AgentState):
     """
     Search Step: Uses Gemini Embeddings to find data in Pinecone.
     """
+    # Get the last message from the user
     latest_message = state["messages"][-1].content
     print(f"🔍 Searching Pinecone for: {latest_message}")
     
     try:
+        # Perform retrieval
         docs = retriever.invoke(latest_message)
+        # Combine found documents into a single string
         context_text = "\n\n".join([doc.page_content for doc in docs])
     except Exception as e:
         print(f"⚠️ Retrieval Error: {e}")
@@ -67,9 +68,10 @@ def retrieve_node(state: AgentState):
 
 def generate_node(state: AgentState):
     """
-    Answer Step: Uses Gemini LLM with AUTO-RETRY for 429 Errors.
+    Answer Step: Uses Gemini LLM with AUTO-RETRY logic for API limits.
     """
     
+    # System Prompt with Instructions
     system_prompt = (
         "You are an expert Corporate Social Responsibility (CSR) Consultant. "
         "Your role is to advise clients strictly based on the provided case studies and articles. "
@@ -91,7 +93,11 @@ def generate_node(state: AgentState):
     
     chain = prompt | llm
     
-    # --- RETRY LOGIC START ---
+    # --- FREE TIER SAFETY LOGIC (Delay + Retry) ---
+    
+    # Initial sleep to prevent hitting rate limits too fast
+    time.sleep(2)
+
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -107,14 +113,14 @@ def generate_node(state: AgentState):
                 print(f"⚠️ Google API Limit Hit (429). Waiting {wait_time} seconds before retry...")
                 time.sleep(wait_time)
             else:
-                # Agar koi aur error hai to crash hone do
+                # If it's a different error, raise it
                 raise e
     
-    # Agar 3 baar try karne ke baad bhi na chale
+    # If all 3 attempts fail
     return {"messages": [AIMessage(content="⚠️ System is currently busy (Google API Rate Limit). Please try again in a minute.")]}
     # --- RETRY LOGIC END ---
 
-# --- 5. Build Graph (FIXED CONNECTION POOL) ---
+# --- 5. Build Graph (SQLite Version) ---
 def build_graph():
     workflow = StateGraph(AgentState)
     workflow.add_node("retrieve", retrieve_node)
@@ -123,33 +129,21 @@ def build_graph():
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
     
-    if db_url:
-        try:
-            # ✅ FIX 2: ConnectionPool Use kiya (SSL Error Fix)
-            pool = ConnectionPool(
-                conninfo=db_url,
-                min_size=1,
-                max_size=10,
-                kwargs={
-                    "autocommit": True,
-                    "keepalives": 1,
-                    "keepalives_idle": 30,
-                    "keepalives_interval": 10,
-                    "keepalives_count": 5
-                }
-            )
-            
-            checkpointer = PostgresSaver(pool)
-            checkpointer.setup()
-            return workflow.compile(checkpointer=checkpointer)
-            
-        except Exception as e:
-            print(f"⚠️ Database Error (Running without memory): {e}")
-            return workflow.compile()
-            
-    return workflow.compile()
+    try:
+        # ✅ FIX: Using SQLite Connection
+        # check_same_thread=False is needed for Streamlit
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        
+        # Setup the Checkpointer (Memory)
+        checkpointer = SqliteSaver(conn)
+        
+        # Compile the graph with memory
+        return workflow.compile(checkpointer=checkpointer)
+        
+    except Exception as e:
+        print(f"⚠️ Memory Error: {e}")
+        # Fallback: Run without memory if database fails (Very unlikely with SQLite)
+        return workflow.compile()
 
+# Initialize the graph
 graph = build_graph()
-
-
-
