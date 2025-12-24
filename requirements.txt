@@ -4,12 +4,9 @@ langchain-openai
 langchain-pinecone
 pinecone-client
 langgraph
-langgraph-checkpoint-postgres
+langgraph-checkpoint-sqlite
 langchain-community
 langchain-core
 langchain-text-splitters
 python-dotenv
-psycopg[binary]
 tqdm
-psycopg-pool
-
