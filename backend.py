@@ -114,7 +114,7 @@ def generate_node(state: AgentState):
     return {"messages": [AIMessage(content="⚠️ System is currently busy (Google API Rate Limit). Please try again in a minute.")]}
     # --- RETRY LOGIC END ---
 
-# --- 5. Build Graph (UPDATED CONNECTION LOGIC) ---
+--- 5. Build Graph (FIXED CONNECTION POOL) ---
 def build_graph():
     workflow = StateGraph(AgentState)
     workflow.add_node("retrieve", retrieve_node)
@@ -125,28 +125,30 @@ def build_graph():
     
     if db_url:
         try:
-            # ✅ FIX: Keep-Alive Settings Add karein
-            # Ye DB ko signal bhejta rahega ke "Main zinda hoon, connection mat kaato"
-            conn = Connection.connect(
-                db_url,
-                autocommit=True,
-                prepare_threshold=None,
-                keepalives=1,          # On
-                keepalives_idle=30,    # Har 30 sec baad ping kare
-                keepalives_interval=10,# Agar jawab na aye to 10 sec baad dubara puche
-                keepalives_count=5     # 5 baar try kare
+            # ✅ FIX 2: ConnectionPool Use kiya (SSL Error Fix)
+            pool = ConnectionPool(
+                conninfo=db_url,
+                min_size=1,
+                max_size=10,
+                kwargs={
+                    "autocommit": True,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5
+                }
             )
             
-            checkpointer = PostgresSaver(conn)
+            checkpointer = PostgresSaver(pool)
             checkpointer.setup()
             return workflow.compile(checkpointer=checkpointer)
             
         except Exception as e:
-            print(f"⚠️ Database Connection Failed: {e}")
-            # Agar DB fail ho jaye to bina memory ke graph return kare (Fallback)
+            print(f"⚠️ Database Error (Running without memory): {e}")
             return workflow.compile()
             
     return workflow.compile()
 
 graph = build_graph()
+
 
