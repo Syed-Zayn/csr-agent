@@ -114,23 +114,39 @@ def generate_node(state: AgentState):
     return {"messages": [AIMessage(content="⚠️ System is currently busy (Google API Rate Limit). Please try again in a minute.")]}
     # --- RETRY LOGIC END ---
 
-# --- 5. Graph Build ---
+# --- 5. Build Graph (UPDATED CONNECTION LOGIC) ---
 def build_graph():
     workflow = StateGraph(AgentState)
-    
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("generate", generate_node)
-    
     workflow.set_entry_point("retrieve")
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", END)
     
     if db_url:
-        pool = ConnectionPool(conninfo=db_url, max_size=20)
-        checkpointer = PostgresSaver(pool)
-        checkpointer.setup()
-        return workflow.compile(checkpointer=checkpointer)
-    else:
-        return workflow.compile()
+        try:
+            # ✅ FIX: Keep-Alive Settings Add karein
+            # Ye DB ko signal bhejta rahega ke "Main zinda hoon, connection mat kaato"
+            conn = Connection.connect(
+                db_url,
+                autocommit=True,
+                prepare_threshold=None,
+                keepalives=1,          # On
+                keepalives_idle=30,    # Har 30 sec baad ping kare
+                keepalives_interval=10,# Agar jawab na aye to 10 sec baad dubara puche
+                keepalives_count=5     # 5 baar try kare
+            )
+            
+            checkpointer = PostgresSaver(conn)
+            checkpointer.setup()
+            return workflow.compile(checkpointer=checkpointer)
+            
+        except Exception as e:
+            print(f"⚠️ Database Connection Failed: {e}")
+            # Agar DB fail ho jaye to bina memory ke graph return kare (Fallback)
+            return workflow.compile()
+            
+    return workflow.compile()
 
 graph = build_graph()
+
